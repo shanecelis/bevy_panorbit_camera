@@ -494,11 +494,6 @@ fn sign_min(a: f32, b: f32) -> f32 {
     }
 }
 
-    fn rotate_around_local(trans: &mut Transform, point: Vec3, rotation: Quat) {
-        trans.translate_around(point, rotation);
-        trans.rotate_local(rotation);
-    }
-
 /// Update `transform` based on alpha, beta, and the camera's focus and radius
 fn update_orbit_transform(
     // alpha: &mut f32,
@@ -513,7 +508,8 @@ fn update_orbit_transform(
         // let pitch = Quat::from_rotation_x(-pan_orbit.beta);
     // let full = Quat::from_euler(EulerRot::YXZ, pan_orbit.alpha, -pan_orbit.beta, 0.);
     let full = yaw * pitch;
-    rotate_around_local(transform, pan_orbit.focus, full);
+    // rotate_around_local(transform, pan_orbit.focus, full);
+    transform.rotate_around(pan_orbit.focus, full);
     // transform.rotation = yaw * transform.rotation; // rotate around global y axis
     // transform.rotation = transform.rotation * pitch; // rotate around local x axis
     // transform.translate_around(pan_orbit.focus, full);
