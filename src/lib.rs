@@ -76,11 +76,6 @@ pub struct PanOrbitCamera {
     /// The point to orbit around. Automatically updated when panning the camera.
     /// Defaults to `Vec3::ZERO`.
     pub focus: Vec3,
-    /// The radius of the orbit, or the distance from the `focus` point.
-    /// For orthographic projection, this is ignored, and the projection's scale is used instead.
-    /// Automatically updated (only for cameras with perspective projection).
-    /// Defaults to `5.0`.
-    pub radius: Option<f32>,
     /// Rotation in radians around the global Y axis (longitudinal). Updated automatically.
     /// If both `alpha` and `beta` are `0.0`, then the camera will be looking forward, i.e. in
     /// the `Vec3::NEG_Z` direction, with up being `Vec3::Y`.
@@ -141,7 +136,6 @@ impl Default for PanOrbitCamera {
     fn default() -> Self {
         PanOrbitCamera {
             focus: Vec3::ZERO,
-            radius: Some(5.0),
             is_upside_down: false,
             allow_upside_down: false,
             orbit_sensitivity: 1.0,
@@ -157,7 +151,7 @@ impl Default for PanOrbitCamera {
             beta: 0.0,
             target_alpha: 0.0,
             target_beta: 0.0,
-            initialized: false,
+            initialized: true,
             alpha_upper_limit: None,
             alpha_lower_limit: None,
             beta_upper_limit: None,
@@ -204,12 +198,22 @@ impl PanOrbitCamera {
         let beta = (comp_vec.y / radius).acos();
         PanOrbitCamera {
             focus,
-            radius: Some(radius),
             alpha,
             beta,
             ..default()
         }
     }
+
+    fn radius(&self, camera_transform: &Transform) -> f32 {
+        let comp_vec = camera_transform.translation - self.focus;
+        comp_vec.length()
+    }
+
+    fn set_radius(&self, camera_transform: &mut Transform, radius: f32) {
+        let dir = (camera_transform.translation - self.focus).normalize();
+        camera_transform.translation = radius * dir + self.focus;
+    }
+
 }
 
 /// Main system for processing input and converting to transformations
@@ -217,39 +221,43 @@ fn pan_orbit_camera(
     windows_query: Query<&Window, With<PrimaryWindow>>,
     mouse_input: Res<Input<MouseButton>>,
     key_input: Res<Input<KeyCode>>,
+    time: Res<Time>,
     mut mouse_motion_events: EventReader<MouseMotion>,
     mut scroll_events: EventReader<MouseWheel>,
     mut camera_query: Query<(&mut PanOrbitCamera, &mut Transform, &mut Projection)>,
 ) {
     for (mut pan_orbit, mut transform, mut projection) in camera_query.iter_mut() {
-        if !pan_orbit.initialized {
-            if let Some(upper_alpha) = pan_orbit.alpha_upper_limit {
-                if pan_orbit.alpha > upper_alpha {
-                    pan_orbit.alpha = upper_alpha;
-                }
-            }
-            if let Some(lower_alpha) = pan_orbit.alpha_lower_limit {
-                if pan_orbit.alpha < lower_alpha {
-                    pan_orbit.alpha = lower_alpha;
-                }
-            }
-            if let Some(upper_beta) = pan_orbit.beta_upper_limit {
-                if pan_orbit.beta > upper_beta {
-                    pan_orbit.beta = upper_beta;
-                }
-            }
-            if let Some(lower_beta) = pan_orbit.beta_lower_limit {
-                if pan_orbit.beta < lower_beta {
-                    pan_orbit.beta = lower_beta;
-                }
-            }
-            update_orbit_transform(pan_orbit.alpha, pan_orbit.beta, &mut pan_orbit, &mut transform);
-            pan_orbit.target_alpha = pan_orbit.alpha;
-            pan_orbit.target_beta = pan_orbit.beta;
+        // if !pan_orbit.initialized {
+        //     if let Some(upper_alpha) = pan_orbit.alpha_upper_limit {
+        //         if pan_orbit.alpha > upper_alpha {
+        //             pan_orbit.alpha = upper_alpha;
+        //         }
+        //     }
+        //     if let Some(lower_alpha) = pan_orbit.alpha_lower_limit {
+        //         if pan_orbit.alpha < lower_alpha {
+        //             pan_orbit.alpha = lower_alpha;
+        //         }
+        //     }
+        //     if let Some(upper_beta) = pan_orbit.beta_upper_limit {
+        //         if pan_orbit.beta > upper_beta {
+        //             pan_orbit.beta = upper_beta;
+        //         }
+        //     }
+        //     if let Some(lower_beta) = pan_orbit.beta_lower_limit {
+        //         if pan_orbit.beta < lower_beta {
+        //             pan_orbit.beta = lower_beta;
+        //         }
+        //     }
+        //     update_orbit_transform(pan_orbit.alpha, pan_orbit.beta, &mut pan_orbit, &mut transform);
+        //     pan_orbit.target_alpha = pan_orbit.alpha;
+        //     pan_orbit.target_beta = pan_orbit.beta;
 
-            pan_orbit.initialized = true;
-            return;
-        }
+        //     pan_orbit.initialized = true;
+        //     return;
+        // }
+        //
+        update_orbit_transform(&mut pan_orbit, &mut transform, time.delta_seconds());
+
 
         // 1 - Get Input
 
@@ -308,38 +316,38 @@ fn pan_orbit_camera(
                 }
             };
             let delta_y = rotation_move.y / window.y * PI;
-            pan_orbit.target_alpha -= delta_x;
-            pan_orbit.target_beta += delta_y;
+            pan_orbit.alpha -= delta_x;
+            pan_orbit.beta += delta_y;
 
-            if let Some(upper_alpha) = pan_orbit.alpha_upper_limit {
-                if pan_orbit.target_alpha > upper_alpha {
-                    pan_orbit.target_alpha = upper_alpha;
-                }
-            }
-            if let Some(lower_alpha) = pan_orbit.alpha_lower_limit {
-                if pan_orbit.target_alpha < lower_alpha {
-                    pan_orbit.target_alpha = lower_alpha;
-                }
-            }
-            if let Some(upper_beta) = pan_orbit.beta_upper_limit {
-                if pan_orbit.target_beta > upper_beta {
-                    pan_orbit.target_beta = upper_beta;
-                }
-            }
-            if let Some(lower_beta) = pan_orbit.beta_lower_limit {
-                if pan_orbit.target_beta < lower_beta {
-                    pan_orbit.target_beta = lower_beta;
-                }
-            }
+            // if let Some(upper_alpha) = pan_orbit.alpha_upper_limit {
+            //     if pan_orbit.target_alpha > upper_alpha {
+            //         pan_orbit.target_alpha = upper_alpha;
+            //     }
+            // }
+            // if let Some(lower_alpha) = pan_orbit.alpha_lower_limit {
+            //     if pan_orbit.target_alpha < lower_alpha {
+            //         pan_orbit.target_alpha = lower_alpha;
+            //     }
+            // }
+            // if let Some(upper_beta) = pan_orbit.beta_upper_limit {
+            //     if pan_orbit.target_beta > upper_beta {
+            //         pan_orbit.target_beta = upper_beta;
+            //     }
+            // }
+            // if let Some(lower_beta) = pan_orbit.beta_lower_limit {
+            //     if pan_orbit.target_beta < lower_beta {
+            //         pan_orbit.target_beta = lower_beta;
+            //     }
+            // }
 
-            if !pan_orbit.allow_upside_down {
-                if pan_orbit.target_beta < -PI / 2.0 {
-                    pan_orbit.target_beta = -PI / 2.0;
-                }
-                if pan_orbit.target_beta > PI / 2.0 {
-                    pan_orbit.target_beta = PI / 2.0;
-                }
-            }
+            // if !pan_orbit.allow_upside_down {
+            //     if pan_orbit.target_beta < -PI / 2.0 {
+            //         pan_orbit.target_beta = -PI / 2.0;
+            //     }
+            //     if pan_orbit.target_beta > PI / 2.0 {
+            //         pan_orbit.target_beta = PI / 2.0;
+            //     }
+            // }
             has_moved = true;
         } else if pan.length_squared() > 0.0 {
             // Make panning distance independent of resolution and FOV,
@@ -349,9 +357,8 @@ fn pan_orbit_camera(
                 Projection::Perspective(ref p) => {
                     pan *= Vec2::new(p.fov * p.aspect_ratio, p.fov) / window;
                     // Make panning proportional to distance away from focus point
-                    if let Some(r) = pan_orbit.radius {
-                        multiplier = r;
-                    }
+                    let r = pan_orbit.radius(&transform);
+                    multiplier = r;
                 }
                 Projection::Orthographic(ref p) => {
                     pan *= Vec2::new(p.area.width(), p.area.height()) / window;
@@ -366,7 +373,9 @@ fn pan_orbit_camera(
         } else if scroll.abs() > 0.0 {
             match *projection {
                 Projection::Perspective(_) => {
-                    pan_orbit.radius = pan_orbit.radius.map(|r| f32::max(r - scroll * r * 0.2, 0.05));
+                    let mut r = pan_orbit.radius(&transform);
+                    r = f32::max(r - scroll * r * 0.2, 0.05);
+                    pan_orbit.set_radius(&mut transform, r);
                     // Prevent zoom to zero otherwise we can get stuck there
                 }
                 Projection::Orthographic(ref mut p) => {
@@ -381,26 +390,26 @@ fn pan_orbit_camera(
         // 3 - Apply orbit rotation based on target alpha/beta
 
         if has_moved
-            || pan_orbit.target_alpha != pan_orbit.alpha
-            || pan_orbit.target_beta != pan_orbit.beta
+            || pan_orbit.alpha != 0.
+            || pan_orbit.beta != 0.
         {
             // Otherwise, interpolate our way there
-            let mut target_alpha = pan_orbit.alpha.lerp(&pan_orbit.target_alpha, &0.2);
-            let mut target_beta = pan_orbit.beta.lerp(&pan_orbit.target_beta, &0.2);
+            // let mut target_alpha = pan_orbit.alpha.lerp(&pan_orbit.target_alpha, &0.2);
+            // let mut target_beta = pan_orbit.beta.lerp(&pan_orbit.target_beta, &0.2);
 
-            // If we're super close, then just snap to target rotation to save cycles
-            if (target_alpha - pan_orbit.target_alpha).abs() < 0.001 {
-                target_alpha = pan_orbit.target_alpha;
-            }
-            if (target_beta - pan_orbit.target_beta).abs() < 0.001 {
-                target_beta = pan_orbit.target_beta;
-            }
+            // // If we're super close, then just snap to target rotation to save cycles
+            // if (target_alpha - pan_orbit.target_alpha).abs() < 0.001 {
+            //     target_alpha = pan_orbit.target_alpha;
+            // }
+            // if (target_beta - pan_orbit.target_beta).abs() < 0.001 {
+            //     target_beta = pan_orbit.target_beta;
+            // }
 
-            update_orbit_transform(target_alpha, target_beta, &mut pan_orbit, &mut transform);
+            update_orbit_transform(&mut pan_orbit, &mut transform, time.delta_seconds());
 
             // Update current alpha and beta values
-            pan_orbit.alpha = target_alpha;
-            pan_orbit.beta = target_beta;
+            // pan_orbit.alpha = target_alpha;
+            // pan_orbit.beta = target_beta;
         }
     }
 }
@@ -463,23 +472,80 @@ fn get_primary_window_size(windows_query: &Query<&Window, With<PrimaryWindow>>) 
     Vec2::new(primary.width(), primary.height())
 }
 
+const ROTATION_SPEED : f32 = 0.4; // radians/second
+
+/// a - b = c. If a and c have different signs, return 0; otherwise return c.
+fn sub_zero(a: f32, b: f32) -> f32 {
+    let c = a - b;
+    if (a > 0.) ^ (c > 0.) {
+        0.
+    } else {
+        c
+    }
+
+}
+
+fn sign_min(a: f32, b: f32) -> f32 {
+    assert!(b > 0.);
+    if a > 0. {
+        a.min(b)
+    } else {
+        a.max(-b)
+    }
+}
+
+    fn rotate_around_local(trans: &mut Transform, point: Vec3, rotation: Quat) {
+        trans.translate_around(point, rotation);
+        trans.rotate_local(rotation);
+    }
+
 /// Update `transform` based on alpha, beta, and the camera's focus and radius
 fn update_orbit_transform(
-    alpha: f32,
-    beta: f32,
+    // alpha: &mut f32,
+    // beta: &mut f32,
     pan_orbit: &mut PanOrbitCamera,
     transform: &mut Transform,
+    delta_seconds: f32
 ) {
-    let mut rotation = Quat::from_rotation_y(alpha);
-    rotation *= Quat::from_rotation_x(-beta);
 
-    transform.rotation = rotation;
+    let yaw = Quat::from_rotation_y(pan_orbit.alpha);
+    let pitch = Quat::from_axis_angle(transform.right(), -pan_orbit.beta);
+        // let pitch = Quat::from_rotation_x(-pan_orbit.beta);
+    // let full = Quat::from_euler(EulerRot::YXZ, pan_orbit.alpha, -pan_orbit.beta, 0.);
+    let full = yaw * pitch;
+    rotate_around_local(transform, pan_orbit.focus, full);
+    // transform.rotation = yaw * transform.rotation; // rotate around global y axis
+    // transform.rotation = transform.rotation * pitch; // rotate around local x axis
+    // transform.translate_around(pan_orbit.focus, full);
+    // transform.rotate_local(full);
+    pan_orbit.alpha = 0.;
+    pan_orbit.beta = 0.;
+    let max = ROTATION_SPEED;
+    let a = sign_min(pan_orbit.alpha, max) * delta_seconds;
+    let b = sign_min(pan_orbit.beta, max) * delta_seconds;
+    let adjust = Quat::from_euler(EulerRot::YXZ, a, -b, 0.);
+    pan_orbit.alpha = sub_zero(pan_orbit.alpha, a);
+    pan_orbit.beta = sub_zero(pan_orbit.beta, b);
+    let mut target = transform.clone();
+    target.look_at(pan_orbit.focus, Vec3::Y);
+
+    let mut rotation = Quat::from_rotation_y(a);
+    rotation *= Quat::from_rotation_x(-b);
+    let delta = transform.rotation.angle_between(target.rotation);
+
+    // transform.rotation = transform.rotation.slerp(target.rotation, (ROTATION_SPEED/delta * delta_seconds).clamp(0.0, 1.0));
+    transform.rotation = target.rotation;
+
+    // transform.rotate_around(pan_orbit.focus, adjust);
+
+    // transform.rotate_around(pan_orbit.focus, rotation);
+    // let r = pan_orbit.radius(transform);
 
     // Update the translation of the camera so we are always rotating 'around'
     // (orbiting) rather than rotating in place
-    let rot_matrix = Mat3::from_quat(transform.rotation);
-    let radius = pan_orbit.radius.get_or_insert_with(|| (transform.translation - pan_orbit.focus).length());
+    // let rot_matrix = Mat3::from_quat(transform.rotation);
+    // let radius = pan_orbit.radius(&transform);
 
-    transform.translation =
-        pan_orbit.focus + rot_matrix.mul_vec3(Vec3::new(0.0, 0.0, *radius));
+    // transform.translation =
+    //     pan_orbit.focus + rot_matrix.mul_vec3(Vec3::new(0.0, 0.0, radius));
 }

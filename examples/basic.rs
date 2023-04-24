@@ -39,5 +39,8 @@ fn setup(
         ..default()
     });
     // Camera
-    commands.spawn((Camera3dBundle::default(), PanOrbitCamera::default()));
+    commands.spawn((Camera3dBundle{
+        transform: Transform::from_xyz(2., 3., 5.).looking_at(Vec3::ZERO, Vec3::Y),
+        ..default()
+    }, PanOrbitCamera::default()));
 }
