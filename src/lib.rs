@@ -505,79 +505,44 @@ fn constant_speed_interpolation(delta: f32, delta_seconds: f32, max_speed: f32) 
     sign_min(delta, max_speed) * delta_seconds
 }
 
+/// Return the signed sin(θ) of vector a and b with respect to axis n.
 fn signed_angle(a: Vec3, b: Vec3, n: Vec3) -> f32 {
-    let angle = a.dot(b);
     let c = a.cross(b);
-    if n.dot(c) < 0. {
-        -c.length()
-    } else {
-        c.length()
-    }
+    c.length().copysign(n.dot(c))
 }
 
 /// Update `transform` based on alpha, beta, and the camera's focus and radius
 fn update_orbit_transform(
-    // alpha: &mut f32,
-    // beta: &mut f32,
     pan_orbit: &mut PanOrbitCamera,
     transform: &mut Transform,
     delta_seconds: f32) {
 
-    let a = no_interpolation(pan_orbit.alpha);
     let max = ROTATION_SPEED;
-    // let a = constant_speed_interpolation(pan_orbit.alpha, delta_seconds, max);
-    let yaw = Quat::from_rotation_y(a);
+    let a = no_interpolation(pan_orbit.alpha);
 
     let mut b = no_interpolation(pan_orbit.beta);
-
-    // let up_angle = transform.up().cross(Vec3::Y).length();
     let up_angle = signed_angle(transform.up(), Vec3::Y, transform.right());
     // println!("b {b} up_angle {up_angle}");
-    // If we're
+    //
+    // There is a weird behavior once this up_angle is at either extreme, so
+    // we're going to supress that last bit.
     if (up_angle > 0.99 && b > 0.) || (up_angle < -0.99 && b < 0.)  {
         pan_orbit.beta = 0.;
         b = 0.
     }
+    let yaw = Quat::from_rotation_y(a);
     let pitch = Quat::from_axis_angle(transform.right(), -b);
-    // let pitch = Quat::from_axis_angle(transform.right(), -0.1);
-    // let pitch = Quat::from_axis_angle(Vec3::Z, -0.1);
-        // let pitch = Quat::from_rotation_x(-pan_orbit.beta);
-    // let full = Quat::from_euler(EulerRot::YXZ, pan_orbit.alpha, -pan_orbit.beta, 0.);
-    let full = yaw * pitch;
-    // rotate_around_local(transform, pan_orbit.focus, full);
-    transform.rotate_around(pan_orbit.focus, full);
-    // transform.rotation = yaw * transform.rotation; // rotate around global y axis
-    // transform.rotation = transform.rotation * pitch; // rotate around local x axis
-    // transform.translate_around(pan_orbit.focus, full);
-    // transform.rotate_local(full);
+    let rot = yaw * pitch;
+    transform.rotate_around(pan_orbit.focus, rot);
+
+    // Subtract off the portion that we've done.
     pan_orbit.alpha = sub_zero(pan_orbit.alpha, a);
     pan_orbit.beta = sub_zero(pan_orbit.beta, b);
 
-    let a = sign_min(pan_orbit.alpha, max) * delta_seconds;
-    let b = sign_min(pan_orbit.beta, max) * delta_seconds;
-    let adjust = Quat::from_euler(EulerRot::YXZ, a, -b, 0.);
-    pan_orbit.alpha = sub_zero(pan_orbit.alpha, a);
-    pan_orbit.beta = sub_zero(pan_orbit.beta, b);
     let mut target = transform.clone();
-
-    // Pick a top that is closest to the current top.
-    // let top = target.up();
-    // let up = if top.dot(Vec3::Y).abs() < 0.1 {
-    //     min_by_key(-Vec3::X, -Vec3::Z, |v| -(v.dot(top) * 100.).abs() as i32)
-    //     // let w = min_by_key(u, Vec3::Z, |v| (v.dot(top) * 100.) as i32);
-    //     // -Vec3::Z
-    // } else {
-    //     Vec3::Y
-    // };
-    // let u = min_by_key(Vec3::X, Vec3::Y, |v| (v.dot(top) * 100.) as i32);
-    // let w = min_by_key(u, Vec3::Z, |v| (v.dot(top) * 100.) as i32);
-
 
     target.look_at(pan_orbit.focus, Vec3::Y);
 
-    let mut rotation = Quat::from_rotation_y(a);
-    rotation *= Quat::from_rotation_x(-b);
-    let delta = transform.rotation.angle_between(target.rotation);
 
     // transform.rotation = transform.rotation.slerp(target.rotation, (ROTATION_SPEED/delta * delta_seconds).clamp(0.0, 1.0));
     transform.rotation = target.rotation;
