@@ -215,6 +215,17 @@ impl PanOrbitCamera {
         camera_transform.translation = radius * dir + self.focus;
     }
 
+
+    fn alpha_beta(&self, camera_transform: &Transform) -> (f32, f32) {
+        let (alpha, neg_beta, _) = camera_transform.rotation.to_euler(EulerRot::YXZ);
+        (alpha, -neg_beta)
+    }
+
+    // fn set_alpha_beta(&self, camera_transform: &Transform, alpha_beta: (f32, f32)) {
+    //     let (alpha, beta) = alpha_beta;
+    //     (alpha, -neg_beta)
+    // }
+
 }
 
 /// Main system for processing input and converting to transformations
