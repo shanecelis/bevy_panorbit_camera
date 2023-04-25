@@ -8,6 +8,7 @@ use bevy_easings::Lerp;
 #[cfg(feature = "bevy_egui")]
 use egui::EguiWantsFocus;
 use std::f32::consts::{PI, TAU};
+use std::cmp::min_by_key;
 
 #[cfg(feature = "bevy_egui")]
 mod egui;
@@ -405,6 +406,8 @@ fn pan_orbit_camera(
             //     target_beta = pan_orbit.target_beta;
             // }
 
+        // update_orbit_transform(&mut pan_orbit, &mut transform, time.delta_seconds(), |x| constant_speed_interpolation(x, time.delta_seconds(), ROTATION_SPEED));
+            // update_orbit_transform(&mut pan_orbit, &mut transform, time.delta_seconds(), no_interpolation);
             update_orbit_transform(&mut pan_orbit, &mut transform, time.delta_seconds());
 
             // Update current alpha and beta values
@@ -472,7 +475,7 @@ fn get_primary_window_size(windows_query: &Query<&Window, With<PrimaryWindow>>) 
     Vec2::new(primary.width(), primary.height())
 }
 
-const ROTATION_SPEED : f32 = 0.4; // radians/second
+const ROTATION_SPEED : f32 = PI; // radians/second
 
 /// a - b = c. If a and c have different signs, return 0; otherwise return c.
 fn sub_zero(a: f32, b: f32) -> f32 {
@@ -494,17 +497,50 @@ fn sign_min(a: f32, b: f32) -> f32 {
     }
 }
 
+fn no_interpolation(delta: f32) -> f32 {
+    delta
+}
+
+fn constant_speed_interpolation(delta: f32, delta_seconds: f32, max_speed: f32) -> f32 {
+    sign_min(delta, max_speed) * delta_seconds
+}
+
+fn signed_angle(a: Vec3, b: Vec3, n: Vec3) -> f32 {
+    let angle = a.dot(b);
+    let c = a.cross(b);
+    if n.dot(c) < 0. {
+        -c.length()
+    } else {
+        c.length()
+    }
+}
+
 /// Update `transform` based on alpha, beta, and the camera's focus and radius
 fn update_orbit_transform(
     // alpha: &mut f32,
     // beta: &mut f32,
     pan_orbit: &mut PanOrbitCamera,
     transform: &mut Transform,
-    delta_seconds: f32
-) {
+    delta_seconds: f32) {
 
-    let yaw = Quat::from_rotation_y(pan_orbit.alpha);
-    let pitch = Quat::from_axis_angle(transform.right(), -pan_orbit.beta);
+    let a = no_interpolation(pan_orbit.alpha);
+    let max = ROTATION_SPEED;
+    // let a = constant_speed_interpolation(pan_orbit.alpha, delta_seconds, max);
+    let yaw = Quat::from_rotation_y(a);
+
+    let mut b = no_interpolation(pan_orbit.beta);
+
+    // let up_angle = transform.up().cross(Vec3::Y).length();
+    let up_angle = signed_angle(transform.up(), Vec3::Y, transform.right());
+    // println!("b {b} up_angle {up_angle}");
+    // If we're
+    if (up_angle > 0.99 && b > 0.) || (up_angle < -0.99 && b < 0.)  {
+        pan_orbit.beta = 0.;
+        b = 0.
+    }
+    let pitch = Quat::from_axis_angle(transform.right(), -b);
+    // let pitch = Quat::from_axis_angle(transform.right(), -0.1);
+    // let pitch = Quat::from_axis_angle(Vec3::Z, -0.1);
         // let pitch = Quat::from_rotation_x(-pan_orbit.beta);
     // let full = Quat::from_euler(EulerRot::YXZ, pan_orbit.alpha, -pan_orbit.beta, 0.);
     let full = yaw * pitch;
@@ -514,15 +550,29 @@ fn update_orbit_transform(
     // transform.rotation = transform.rotation * pitch; // rotate around local x axis
     // transform.translate_around(pan_orbit.focus, full);
     // transform.rotate_local(full);
-    pan_orbit.alpha = 0.;
-    pan_orbit.beta = 0.;
-    let max = ROTATION_SPEED;
+    pan_orbit.alpha = sub_zero(pan_orbit.alpha, a);
+    pan_orbit.beta = sub_zero(pan_orbit.beta, b);
+
     let a = sign_min(pan_orbit.alpha, max) * delta_seconds;
     let b = sign_min(pan_orbit.beta, max) * delta_seconds;
     let adjust = Quat::from_euler(EulerRot::YXZ, a, -b, 0.);
     pan_orbit.alpha = sub_zero(pan_orbit.alpha, a);
     pan_orbit.beta = sub_zero(pan_orbit.beta, b);
     let mut target = transform.clone();
+
+    // Pick a top that is closest to the current top.
+    // let top = target.up();
+    // let up = if top.dot(Vec3::Y).abs() < 0.1 {
+    //     min_by_key(-Vec3::X, -Vec3::Z, |v| -(v.dot(top) * 100.).abs() as i32)
+    //     // let w = min_by_key(u, Vec3::Z, |v| (v.dot(top) * 100.) as i32);
+    //     // -Vec3::Z
+    // } else {
+    //     Vec3::Y
+    // };
+    // let u = min_by_key(Vec3::X, Vec3::Y, |v| (v.dot(top) * 100.) as i32);
+    // let w = min_by_key(u, Vec3::Z, |v| (v.dot(top) * 100.) as i32);
+
+
     target.look_at(pan_orbit.focus, Vec3::Y);
 
     let mut rotation = Quat::from_rotation_y(a);
