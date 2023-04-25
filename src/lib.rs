@@ -389,7 +389,6 @@ fn pan_orbit_camera(
         }
 
         // 3 - Apply orbit rotation based on target alpha/beta
-
         if has_moved
             || pan_orbit.alpha != 0.
             || pan_orbit.beta != 0.
@@ -522,8 +521,7 @@ fn update_orbit_transform(
 
     let mut b = no_interpolation(pan_orbit.beta);
     let up_angle = signed_angle(transform.up(), Vec3::Y, transform.right());
-    // println!("b {b} up_angle {up_angle}");
-    //
+
     // There is a weird behavior once this up_angle is at either extreme, so
     // we're going to supress that last bit.
     if (up_angle > 0.99 && b > 0.) || (up_angle < -0.99 && b < 0.)  {
@@ -535,28 +533,19 @@ fn update_orbit_transform(
     let rot = yaw * pitch;
     transform.rotate_around(pan_orbit.focus, rot);
 
-    // Subtract off the portion that we've done.
+    // Subtract off the portion that we've completed.
     pan_orbit.alpha = sub_zero(pan_orbit.alpha, a);
     pan_orbit.beta = sub_zero(pan_orbit.beta, b);
 
-    let mut target = transform.clone();
-
-    target.look_at(pan_orbit.focus, Vec3::Y);
-
+    // let mut target = transform.clone();
+    // target.look_at(pan_orbit.focus, Vec3::Y);
 
     // transform.rotation = transform.rotation.slerp(target.rotation, (ROTATION_SPEED/delta * delta_seconds).clamp(0.0, 1.0));
-    transform.rotation = target.rotation;
-
-    // transform.rotate_around(pan_orbit.focus, adjust);
-
-    // transform.rotate_around(pan_orbit.focus, rotation);
-    // let r = pan_orbit.radius(transform);
+    // transform.rotation = target.rotation;
 
     // Update the translation of the camera so we are always rotating 'around'
     // (orbiting) rather than rotating in place
-    // let rot_matrix = Mat3::from_quat(transform.rotation);
-    // let radius = pan_orbit.radius(&transform);
-
-    // transform.translation =
-    //     pan_orbit.focus + rot_matrix.mul_vec3(Vec3::new(0.0, 0.0, radius));
+    let radius = pan_orbit.radius(&transform);
+    transform.translation =
+        pan_orbit.focus + transform.rotation.mul_vec3(Vec3::new(0.0, 0.0, radius));
 }
