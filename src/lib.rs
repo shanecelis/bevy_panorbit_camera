@@ -221,11 +221,26 @@ impl PanOrbitCamera {
         (alpha, -neg_beta)
     }
 
-    // fn set_alpha_beta(&self, camera_transform: &Transform, alpha_beta: (f32, f32)) {
-    //     let (alpha, beta) = alpha_beta;
-    //     (alpha, -neg_beta)
-    // }
+    fn set_alpha_beta(&self, camera_transform: &mut Transform, alpha_beta: (f32, f32)) {
+        let (alpha, beta) = alpha_beta;
 
+        let mut rotation = Quat::from_rotation_y(alpha);
+        rotation *= Quat::from_rotation_x(-beta);
+
+        camera_transform.rotation = rotation;
+        camera_transform.translation =
+            self.focus + camera_transform.rotation.mul_vec3(Vec3::new(0.0, 0.0, self.radius(camera_transform)));
+    }
+
+}
+
+fn rotate_towards(from: Quat, to: Quat, max_radians: f32) -> Quat {
+    let angle = from.angle_between(to);
+    if angle < f32::EPSILON {
+        to
+    } else {
+        from.slerp(to, (max_radians / angle).min(1.))
+    }
 }
 
 /// Main system for processing input and converting to transformations
@@ -267,9 +282,16 @@ fn pan_orbit_camera(
         //     pan_orbit.initialized = true;
         //     return;
         // }
-        //
-        update_orbit_transform(&mut pan_orbit, &mut transform, time.delta_seconds());
 
+        // Check to see if we're looking at the focus.
+        let mut target = transform.clone();
+        target.look_at(pan_orbit.focus, Vec3::Y);
+        let angle = transform.rotation.angle_between(target.rotation);
+
+        if angle > f32::EPSILON {
+            // println!("Fixing focus");
+            transform.rotation = rotate_towards(transform.rotation, target.rotation, ROTATION_SPEED * time.delta_seconds());
+        }
 
         // 1 - Get Input
 
@@ -485,7 +507,7 @@ fn get_primary_window_size(windows_query: &Query<&Window, With<PrimaryWindow>>) 
     Vec2::new(primary.width(), primary.height())
 }
 
-const ROTATION_SPEED : f32 = PI; // radians/second
+const ROTATION_SPEED : f32 = PI/10.; // radians/second
 
 /// a - b = c. If a and c have different signs, return 0; otherwise return c.
 fn sub_zero(a: f32, b: f32) -> f32 {
@@ -527,7 +549,9 @@ fn update_orbit_transform(
     transform: &mut Transform,
     delta_seconds: f32) {
 
+    println!("updating");
     let max = ROTATION_SPEED;
+
     let a = no_interpolation(pan_orbit.alpha);
 
     let mut b = no_interpolation(pan_orbit.beta);
