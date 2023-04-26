@@ -438,15 +438,62 @@ fn pan_orbit_camera(
             //     target_beta = pan_orbit.target_beta;
             // }
 
-        // update_orbit_transform(&mut pan_orbit, &mut transform, time.delta_seconds(), |x| constant_speed_interpolation(x, time.delta_seconds(), ROTATION_SPEED));
+            // update_orbit_transform(&mut pan_orbit, &mut transform, time.delta_seconds(), |x| constant_speed_interpolation(x, time.delta_seconds(), ROTATION_SPEED));
             // update_orbit_transform(&mut pan_orbit, &mut transform, time.delta_seconds(), no_interpolation);
             update_orbit_transform(&mut pan_orbit, &mut transform, time.delta_seconds());
+
+            // Handle limiters. Only set if there is a change.
+            let (alpha, beta) = pan_orbit.alpha_beta(&transform);
+            println!("alpha beta {alpha} {beta}");
+            let a = limit(alpha, pan_orbit.alpha_lower_limit, pan_orbit.alpha_upper_limit);
+            let b = limit(beta,  pan_orbit.beta_lower_limit,  pan_orbit.beta_upper_limit);
+            if a.is_some() || b.is_some() {
+                println!("limiting");
+                pan_orbit.set_alpha_beta(&mut transform, (a.unwrap_or(alpha), b.unwrap_or(beta)));
+            }
 
             // Update current alpha and beta values
             // pan_orbit.alpha = target_alpha;
             // pan_orbit.beta = target_beta;
         }
     }
+}
+
+/// limit() is like clamp with optional limits. It does not pass through the
+/// value unchanged so that the caller knows whether a limit was reached. This is
+/// advantageous in situations where value changes might be expensive to handle.
+///
+/// If one did want pass through behavior, one could do this:
+///
+/// ```rust
+/// use bevy_panorbit_camera::limit;
+/// let lower = Some(0.);
+/// let upper = Some(10.);
+/// let value = 5.;
+/// let result = limit(value, lower, upper).unwrap_or(value);
+/// assert_eq!(5., result);
+/// ```
+///
+/// Returns None if no limit is reached; otherwise returns the limit.
+///
+/// ```
+/// use bevy_panorbit_camera::limit;
+/// assert_eq!(None,     limit(1., None,     None));
+/// assert_eq!(Some(2.), limit(1., Some(2.), None));
+/// assert_eq!(None,     limit(1., Some(0.), None));
+/// assert_eq!(Some(3.), limit(4., None,     Some(3.)));
+/// assert_eq!(None,     limit(4., None,     Some(5.)));
+/// ```
+///
+/// It will panic if the lower limit is greater than the uppper limit.
+///
+/// ```rust,should_panic
+/// use bevy_panorbit_camera::limit;
+/// limit(3., Some(10.), Some(0.));
+/// ```
+pub fn limit(value: f32, lower: Option<f32>, upper: Option<f32>) -> Option<f32> {
+    assert!(upper.zip(lower).map(|(u, l)| u > l).unwrap_or(true));
+    lower.filter(|l| value < *l).or(upper.filter(|u| value > *u))
 }
 
 fn orbit_pressed(
@@ -509,6 +556,7 @@ fn get_primary_window_size(windows_query: &Query<&Window, With<PrimaryWindow>>) 
 
 const ROTATION_SPEED : f32 = PI/10.; // radians/second
 
+/// Subtract without allowing crossing zero.
 /// a - b = c. If a and c have different signs, return 0; otherwise return c.
 fn sub_zero(a: f32, b: f32) -> f32 {
     let c = a - b;
@@ -520,13 +568,24 @@ fn sub_zero(a: f32, b: f32) -> f32 {
 
 }
 
-fn sign_min(a: f32, b: f32) -> f32 {
-    assert!(b > 0.);
-    if a > 0. {
-        a.min(b)
-    } else {
-        a.max(-b)
-    }
+/// Sign preserving min. Preserves sign of first argument.
+///
+/// ```rust
+/// use bevy_panorbit_camera::sign_min;
+/// assert_eq!(2., sign_min(2., 3.));
+/// assert_eq!(-2., sign_min(-2., 3.));
+/// assert_eq!(-3., sign_min(-4., 3.));
+/// assert_eq!(3., sign_min(4., 3.));
+///
+/// assert_eq!(2., sign_min(2., -3.));
+/// assert_eq!(-2., sign_min(-2., -3.));
+/// assert_eq!(-3., sign_min(-4., -3.));
+/// assert_eq!(3., sign_min(4., -3.));
+/// ```
+/// a.signum() * a.abs().min(b.abs())
+pub fn sign_min(a: f32, b: f32) -> f32 {
+    // assert!(b > 0.);
+    a.abs().min(b.abs()).copysign(a)
 }
 
 fn no_interpolation(delta: f32) -> f32 {
